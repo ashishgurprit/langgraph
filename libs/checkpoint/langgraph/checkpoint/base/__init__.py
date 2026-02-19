@@ -51,6 +51,8 @@ class CheckpointMetadata(TypedDict, total=False):
 
     Mapping from checkpoint namespace to checkpoint ID.
     """
+    run_id: str
+    """The ID of the run that created this checkpoint."""
 
 
 ChannelVersions = dict[str, str | int | float]
@@ -118,6 +120,25 @@ class BaseCheckpointSaver(Generic[V]):
 
     Checkpointers allow LangGraph agents to persist their state
     within and across multiple interactions.
+
+    When a checkpointer is configured, you should pass a `thread_id` in the config when
+    invoking the graph:
+
+    ```python
+    config = {"configurable": {"thread_id": "my-thread"}}
+    graph.invoke(inputs, config)
+    ```
+
+    The `thread_id` is the primary key used to store and retrieve checkpoints. Without
+    it, the checkpointer cannot save state, resume from interrupts, or enable
+    time-travel debugging.
+
+    How you choose ``thread_id`` depends on your use case:
+
+    - **Single-shot workflows**: Use a unique ID (e.g., uuid4) for each run when
+        executions are independent.
+    - **Conversational memory**: Reuse the same `thread_id` across invocations
+        to accumulate state (e.g., chat history) within a conversation.
 
     Attributes:
         serde (SerializerProtocol): Serializer for encoding/decoding checkpoints.
@@ -249,6 +270,45 @@ class BaseCheckpointSaver(Generic[V]):
         """
         raise NotImplementedError
 
+    def delete_for_runs(
+        self,
+        run_ids: Sequence[str],
+    ) -> None:
+        """Delete all checkpoints and writes associated with the given run IDs.
+
+        Args:
+            run_ids: The run IDs whose checkpoints should be deleted.
+        """
+        raise NotImplementedError
+
+    def copy_thread(
+        self,
+        source_thread_id: str,
+        target_thread_id: str,
+    ) -> None:
+        """Copy all checkpoints and writes from one thread to another.
+
+        Args:
+            source_thread_id: The thread ID to copy from.
+            target_thread_id: The thread ID to copy to.
+        """
+        raise NotImplementedError
+
+    def prune(
+        self,
+        thread_ids: Sequence[str],
+        *,
+        strategy: str = "keep_latest",
+    ) -> None:
+        """Prune checkpoints for the given threads.
+
+        Args:
+            thread_ids: The thread IDs to prune.
+            strategy: The pruning strategy. `"keep_latest"` retains only the most
+                recent checkpoint per namespace. `"delete"` removes all checkpoints.
+        """
+        raise NotImplementedError
+
     async def aget(self, config: RunnableConfig) -> Checkpoint | None:
         """Asynchronously fetch a checkpoint using the given configuration.
 
@@ -351,6 +411,45 @@ class BaseCheckpointSaver(Generic[V]):
 
         Args:
             thread_id: The thread ID whose checkpoints should be deleted.
+        """
+        raise NotImplementedError
+
+    async def adelete_for_runs(
+        self,
+        run_ids: Sequence[str],
+    ) -> None:
+        """Asynchronously delete all checkpoints and writes for the given run IDs.
+
+        Args:
+            run_ids: The run IDs whose checkpoints should be deleted.
+        """
+        raise NotImplementedError
+
+    async def acopy_thread(
+        self,
+        source_thread_id: str,
+        target_thread_id: str,
+    ) -> None:
+        """Asynchronously copy all checkpoints and writes from one thread to another.
+
+        Args:
+            source_thread_id: The thread ID to copy from.
+            target_thread_id: The thread ID to copy to.
+        """
+        raise NotImplementedError
+
+    async def aprune(
+        self,
+        thread_ids: Sequence[str],
+        *,
+        strategy: str = "keep_latest",
+    ) -> None:
+        """Asynchronously prune checkpoints for the given threads.
+
+        Args:
+            thread_ids: The thread IDs to prune.
+            strategy: The pruning strategy. `"keep_latest"` retains only the most
+                recent checkpoint per namespace. `"delete"` removes all checkpoints.
         """
         raise NotImplementedError
 
